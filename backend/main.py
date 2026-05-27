@@ -5,8 +5,12 @@ from core import models
 from auth.router import router as auth_router
 from reports.router import router as reports_router
 from employees.router import router as employees_router
+from employees.departments import router as departments_router
+from employees.departments import Department
+from core.database import Base
 
 models.Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="CRM KindShift API")
 
@@ -21,6 +25,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(reports_router)
 app.include_router(employees_router)
+app.include_router(departments_router)
 
 @app.get("/")
 def root():

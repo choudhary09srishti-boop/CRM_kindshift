@@ -8,6 +8,7 @@ from datetime import date
 from typing import Optional
 from jose import jwt
 from core.config import settings
+from datetime import date, timedelta
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 security = HTTPBearer()
@@ -56,4 +57,31 @@ def team_reports(user: User = Depends(get_current_user), db: Session = Depends(g
     if user.role not in ["manager", "admin"]:
         raise HTTPException(status_code=403, detail="Access denied")
     reports = db.query(Report).all()
+    return reports
+@router.get("/filter")
+def filter_reports(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    employee_id: Optional[int] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None
+):
+    if user.role not in ["manager", "admin"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    query = db.query(Report)
+    if employee_id:
+        query = query.filter(Report.user_id == employee_id)
+    if start_date:
+        query = query.filter(Report.date >= start_date)
+    if end_date:
+        query = query.filter(Report.date <= end_date)
+    return query.all()
+
+
+@router.get("/pending")
+def pending_reports(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if user.role not in ["manager", "admin"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    today = date.today()
+    reports = db.query(Report).filter(Report.status == "pending").all()
     return reports
