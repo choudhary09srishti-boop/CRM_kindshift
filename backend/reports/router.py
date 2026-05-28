@@ -9,6 +9,11 @@ from typing import Optional
 from jose import jwt
 from core.config import settings
 from datetime import date, timedelta
+from fastapi.responses import StreamingResponse
+import pandas as pd
+import io
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 security = HTTPBearer()
@@ -85,3 +90,49 @@ def pending_reports(user: User = Depends(get_current_user), db: Session = Depend
     today = date.today()
     reports = db.query(Report).filter(Report.status == "pending").all()
     return reports
+from fastapi.responses import StreamingResponse
+import pandas as pd
+import io
+
+@router.get("/export/csv")
+def export_csv(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if user.role not in ["manager", "admin"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    reports = db.query(Report).all()
+    data = [{
+        "id": r.id,
+        "user_id": r.user_id,
+        "date": r.date,
+        "work_done": r.work_done,
+        "pending_work": r.pending_work,
+        "blockers": r.blockers,
+        "status": r.status
+    } for r in reports]
+    df = pd.DataFrame(data)
+    stream = io.StringIO()
+    df.to_csv(stream, index=False)
+    stream.seek(0)
+    return StreamingResponse(stream, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=reports.csv"})
+
+@router.get("/export/pdf")
+def export_pdf(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if user.role not in ["manager", "admin"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    reports = db.query(Report).all()
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=letter)
+    p.setFont("Helvetica-Bold", 16)
+    p.drawString(200, 750, "CRM KindShift - Reports")
+    p.setFont("Helvetica", 10)
+    y = 720
+    for r in reports:
+        p.drawString(50, y, f"ID: {r.id} | Date: {r.date} | User: {r.user_id} | Status: {r.status}")
+        p.drawString(50, y-15, f"Work Done: {r.work_done}")
+        p.drawString(50, y-30, f"Pending: {r.pending_work} | Blockers: {r.blockers}")
+        y -= 60
+        if y < 50:
+            p.showPage()
+            y = 750
+    p.save()
+    buffer.seek(0)
+    return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": "attachment; filename=reports.pdf"})
